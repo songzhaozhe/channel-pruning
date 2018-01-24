@@ -1,0 +1,33 @@
+[provider_cfg]
+nori_source = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/imagenet.train.nori.list
+nori_server = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/servers_train.txt
+batch_size = 16
+cache_data = 0
+random_shuffle = 1
+color_kl_dir = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/imagenet_2012_color_kl
+accessor_type = replacement
+
+
+entries = image, label
+
+[image]
+type = image
+
+batch_img_size = 224
+crop_type = 1
+crop_ratio = 0.875
+channel_num = 3
+scale_jitter_type = UniAreaV2
+crop_ratio_upperbound = 1
+crop_ratio_lowerbound = 0.08
+ratio_jitter = 0.75
+
+brightness = 0.2
+contrast = 0.2
+saturation = 0.2
+interpolation = Bilinear, Bicubic, Lanczos
+
+
+[label]
+type = label
+

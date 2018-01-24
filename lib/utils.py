@@ -1,7 +1,6 @@
 from __future__ import print_function
 import os.path as osp
 import time
-from termcolor import colored
 import numpy as np
 from IPython import embed
 import lib.cfgs as cfgs
@@ -92,7 +91,7 @@ def shell(*s):
     print("$", s)
     print(os.system(s))
     #print(subprocess.check_output(s, shell=True))
-    return 
+    return
     # return os.system(s)
 
 
@@ -121,6 +120,6 @@ class Timer(object):
             return self.average_time
         else:
             return self.diff
-    
+
 if __name__ == "__main__":
     print(underline("a", "b"))
