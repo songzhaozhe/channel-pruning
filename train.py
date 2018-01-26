@@ -28,7 +28,10 @@ def step0(pt, model):
     return {"WPQ": WPQ, "pt": pt, "model": model}
 
 def step1(pt, model, WPQ, check_exist=False):
-    print(pt)
+    print('pt',pt)
+    print('model',model)
+    print('WPQ',WPQ)
+    print('printed')
     net = Net(pt, model, noTF=1)
     model = net.finalmodel(WPQ) # loads weights into the caffemodel - by Mario
     if 1:#TODO: Consider adding a configuration paramter to cfgs.py in order to control whether or not to prune the last conv layer -by Mario
@@ -71,6 +74,7 @@ def c3(pt=cfgs.vgg.model,model=cfgs.vgg.weights): # TODO: Consider changing cfgs
     cfgs.accname='accuracy@5' # name of layer in the prototxt -by Mario
     def solve(pt, model):
         net = Net(pt, model=model)
+        print("loading frozen")
         net.load_frozen() # this method can load images from memory if we pass a feats_dic. For what? -by Mario
         WPQ, new_pt = net.R3()
         return {"WPQ": WPQ, "new_pt": new_pt}
@@ -86,9 +90,11 @@ def c3(pt=cfgs.vgg.model,model=cfgs.vgg.weights): # TODO: Consider changing cfgs
         return {"final": None}
 
     worker = Worker()
+    print('step0')
     outputs = worker.do(step0, pt=pt, model=model)
     printstage("freeze")
     pt = outputs['pt']
+    print('step1')
     outputs = worker.do(step1,**outputs)
     printstage("speed", dcfgs.dic.keep)
     outputs['pt'] = mem_pt(pt)

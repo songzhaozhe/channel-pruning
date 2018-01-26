@@ -1,4 +1,6 @@
 #lib/cfgs.py
+*.pyc
+*.brainmodel
 *.pickle
 *.caffemodel
 *.solverstate

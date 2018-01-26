@@ -2,6 +2,7 @@ from __future__ import print_function
 import os.path as osp
 import time
 import numpy as np
+from termcolor import colored
 from IPython import embed
 import lib.cfgs as cfgs
 import os

@@ -1,32 +1,50 @@
 name: "VGG_ILSVRC_16_layers"
 layer {
   name: "data"
-  type: "MemoryData"
+  type: "ImageData"
   top: "data"
   top: "label"
+  image_data_param {
+    new_dim: 256
+    bicubic: true
+    shuffle: true
+    batch_size: 10
+    source: "path/to/ilsvrc12/sourceval.txt"
+  }
+  transform_param {
+    crop_size: 224
+    #scale: 0.0078125
+    mean_file: "temp/bgr.binaryproto" 
+    #mean_value: 104.0
+    #mean_value: 117.0
+    #mean_value: 123.0
+  }
   include {
     phase: TEST
-  }
-  memory_data_param {
-    batch_size: 32 
-    channels: 3
-    height: 224
-    width: 224
   }
 }
 layer {
   name: "data"
-  type: "MemoryData"
+  type: "ImageData"
   top: "data"
   top: "label"
+  image_data_param {
+    new_dim: 256
+    bicubic: true
+    shuffle: true
+    batch_size: 32
+    source: "path/to/ilsvrc12/sourcetrain.txt"
+  }
+  transform_param {
+    crop_size: 224
+    mirror: true
+    mean_file: "temp/bgr.binaryproto" 
+    #mean_value: 104.0
+    #mean_value: 117.0
+    #mean_value: 123.0
+  }
   include {
     phase: TRAIN
-  }
-  memory_data_param {
-    batch_size: 10
-    channels: 3
-    height: 224
-    width: 224
   }
 }
 layer {

@@ -3,7 +3,7 @@
 nori_source = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/imagenet.val.nori.list
 nori_server = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/servers_val.txt
 #source = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/ImageNet_2012_big_val
-batch_size = 200
+batch_size = 10
 cache_data = 0
 random_shuffle = 0
 

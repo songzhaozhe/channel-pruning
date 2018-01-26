@@ -366,7 +366,9 @@ class Net():
         self.dp.init()
 
     def extract_features(self, names=[], nBatches=None, points_dict=None, save=False):
+        print("in extract features!!!")
         assert nBatches is None, "deprecate"
+        print("entered extract features")
         nBatches = dcfgs.nBatches
         nPointsPerLayer=dcfgs.nPointsPerLayer
         if not isinstance(names, list):
@@ -387,12 +389,12 @@ class Net():
         def set_points_dict(name, data):
             assert name not in points_dict
             points_dict[name] = data
-        dcfgs.data = cfgs.Data.lmdb  # I think this disables the use of Data.pro type of data -by Mario
+        #dcfgs.data = cfgs.Data.lmdb  # I think this disables the use of Data.pro type of data -by Mario
         if save:
             if points_dict is None:
                 frozen_points = False
                 points_dict = dict()
-                if 0 and self._mem: self.usexyz()
+                if dcfgs.data==cfgs.Data.pro and self._mem: self.usexyz()
 
                 set_points_dict("nPointsPerLayer", nPointsPerLayer)
                 set_points_dict("nBatches", nBatches)
@@ -519,7 +521,7 @@ class Net():
             idx += nFeatsPerBatch
             fc_idx += nPicsPerBatch
 
-        dcfgs.data = cfgs.Data.lmdb
+        #dcfgs.data = cfgs.Data.lmdb
         self.clr_acc()
         if save:
             if frozen_points:
@@ -1290,6 +1292,8 @@ class Net():
         return WPQ, pt, model
 
     def R3(self): # TODO: Delete VH and ITQ from R3 to eliminate spatial and channel factorization (tried but failed ㅜㅜ) -by Mario
+        print("entered R3!!!!")
+        self.usexyz()
         speed_ratio = dcfgs.dic.keep
         if speed_ratio not in [3.]: # this if-statement might give a problem if we change the speed-up target. Consider adding more values to the list -by Mario
             NotImplementedError
@@ -1305,7 +1309,9 @@ class Net():
         self._mem = True
         end = 5 # TODO: Consider passing a flag to create this dictionaries for other models (passign arguments to the paserser maybe?) -by Mario
         alldic = ['conv%d_1' % i for i in range(1,end)] + ['conv%d_2' % i for i in range(3, end)]
+        print(alldic)
         pooldic = ['conv1_2', 'conv2_2']#, 'conv3_3']
+        print(pooldic)
         rankdic = {'conv1_1': 17,
                    'conv1_2': 17,
                    'conv2_1': 37,
@@ -1347,6 +1353,7 @@ class Net():
             rank = rankdic[conv]
             d_prime = rank
             if d_c < rank: d_c = rank
+            print("spatial decomp!!!!!!!")
             '''spatial decomposition'''
             if True:
                 t.tic()
@@ -1362,7 +1369,7 @@ class Net():
                     self.set_param_b(conv,b)
                 else:
                     V, H, VHr = VH_decompose(weights, rank=rank, DEBUG=DEBUG)
-
+                print("inside spatial decomp")
 
                 self.WPQ[conv_V] = V
 
@@ -1379,7 +1386,7 @@ class Net():
                 t.toc('spatial_decomposition')
 
             self.insert(conv, conv_H)
-
+            print("channel decomp")
             '''channel decomposition'''
             if True:# and conv != 'conv3_3':
                 t.tic()
@@ -1402,7 +1409,7 @@ class Net():
                 self.insert(conv_H, conv_P, pad=0, kernel_size=1, bias=True, stride=1)
 
                 t.toc('channel_decomposition')
-
+            print("channel pruning")
             '''channel pruning'''
             if dcfgs.dic.vh and (conv in alldic or conv in pooldic) and (convnext in self.convs):
                 t.tic()
@@ -1412,6 +1419,7 @@ class Net():
                     X_name = self.bottom_names[convnext][0]
                 else:
                     X_name = conv
+                print(X_name, '!!!!!!!!!!!!!!!!!!')
                 """
                 dictionary_kernel() is a function wrapper of the fucntion dictionary() which
                 performes the feature maps selection (lasso reression and mean square error minization)
@@ -1467,6 +1475,7 @@ class Net():
             if 0:#DEBUG:
                 print("V", H_params)
                 print("H", V_params)
+            print("channel pruning finished")
         new_pt = self.save_pt(prefix=prefix)
         return self.WPQ, new_pt
 
