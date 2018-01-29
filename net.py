@@ -5,31 +5,40 @@ import argparse
 from meghair.utils.io import load_network
 from meghair.utils import io
 import numpy as np
+from meghair.train.env import  OneShotEnv
 
 from megskull.graph import FpropEnv
 from lib.utils import underline, OK, FAIL, space, CHECK_EQ, shell, redprint, Timer
 from sklearn.linear_model import Lasso,LinearRegression, MultiTaskLasso
 from lib.decompose import relu, dictionary, rel_error
 from ntools.data.datapro import DataproProvider
+from ntools.megtools.classification.config import DpflowProviderMaker
 
 
 
 class brain_net():
-    def __init__(self, model_file):
+    def __init__(self, model_file, env):
+        self.env = env
         self.net = load_network(model_file)
-        self.N = 16
-        self.batch_size = 8
+        self.N = 64
+        self.batch_size = 32
         self.nperimage = 10
         self.new_net = load_network(model_file)
         print("finished loading weights")
         self.oprs_dict = self.net.loss_visitor.all_oprs_dict
         self.new_oprs_dict = self.new_net.loss_visitor.all_oprs_dict
         #print(self.oprs_dict)
-        c = []
-        env = FpropEnv()
-        for layers in self.net.all_oprs:
-            c.append(env.get_mgbvar(layers))
-        self.fprop1 = env.comp_graph.compile_outonly(c)
+        #c = []
+        #env = FpropEnv()
+        self.names2id = {}
+        #i = 0
+        #for layers in self.net.all_oprs:
+        #    c.append(layers)
+        #    self.names2id[layers.name] = i
+        #    i = i+1
+
+        #self.fprop1 = env.make_func_from_loss_var(self.net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
+        #self.fprop1.compile(c)
 
         self.convs = self.get_convs_from_net()
         print(self.convs)
@@ -47,11 +56,12 @@ class brain_net():
                 output_names = ['data', 'label']
                 )
         else:
-            return DataproProviderMaker(
-                config_file = 'provider_config_train.txt',
-                provider_name = 'provider_cfg_train',
-                entry_names = ['image', 'label'],
-                output_names = ['data', 'label']
+            return DpflowProviderMaker(
+                conn                = 'szz.vgg.imagenet',
+                entry_names         = ['image', 'label'],
+                output_names        = ['data', 'label'],
+                descriptor          = { 'data': { 'shape': [32, 3, 224, 224] }, 'label': { 'shape': [32] } },
+                buffer_size         = 16
                 )
 
     def get_data_batch(self, is_val = False):
@@ -88,10 +98,10 @@ class brain_net():
         #print(self.oprs_dict['conv1_1'].get_value())
         return self.oprs_dict[conv+':W'].get_value().shape
     def get_layer_id(self, conv):
-        i = 0
-        while (self.fprop1.outputs[i].name != conv):
-            i += 1
-        return i
+        ret = self.names2id[conv]
+        #print(self.names2id)
+        #print(conv+" id is ",ret)
+        return ret
 
     def dictionary_kernel(self, X_name, d_prime, Y_name, DEBUG = 0):
         """ channel pruning algorithm wrapper
@@ -117,8 +127,6 @@ class brain_net():
         print("entered R3!!!!")
         oprs_dict = self.oprs_dict
         new_oprs_dict = self.new_oprs_dict
-        speed_ratio = 3.
-        prefix = str(int(speed_ratio)+1)+'x'
         DEBUG = True
         convs= self.convs
         end = 5 # TODO: Consider passing a flag to create this dictionaries for other models (passign arguments to the paserser maybe?) -by Mario
@@ -138,26 +146,15 @@ class brain_net():
                    'conv5_2': 390,
                    'conv5_3': 379}
 
-        for i in rankdic:
-            if 'conv5' in i:
-                continue
-            rankdic[i] = int(rankdic[i] * 4. / speed_ratio)
-        c_ratio = 1.15
-
         t = Timer()
 
         for conv, convnext in zip(convs[1:], convs[2:]+['pool5']): # note that we exclude the first conv, conv1_1 contributes little computation -by Mario
-
             W_shape = self.param_shape(conv)
-            d_c = int(W_shape[0] / c_ratio)
-            rank = rankdic[conv]
-            if d_c < rank: d_c = rank
+            d_c = rankdic[conv]
             print("channel pruning")
             '''channel pruning'''
             if (conv in alldic or conv in pooldic) and (convnext in self.convs):
                 t.tic()
-                #if conv.startswith('conv4'): #what is this -by Mario
-                #    c_ratio = 1.5
                 if conv in pooldic:
                     X_name = pooldic[conv]
                 else:
@@ -176,7 +173,7 @@ class brain_net():
 
                 t.toc('channel_pruning')
             print("channel pruning finished")
-            self.val()
+        self.val()
         io.dump(self.new_net, 'pruned_model.save')
 
     def extract_XY(self, X_name, Y_name, DEBUG = False):
@@ -189,24 +186,35 @@ class brain_net():
             Y feats of size: N c1 1 1
         """
         print("extracting XY")
+        env = self.env
         batch_size = self.batch_size
         N = self.N
         n = self.nperimage
 
-        c = []
-        env = FpropEnv()
-        for layers in self.new_net.all_oprs:
-            c.append(env.get_mgbvar(layers))
-        fprop2 = env.comp_graph.compile_outonly(c)
-        fprop1 = self.fprop1
 
+        #env = FpropEnv()
+        #for layers in self.new_net.all_oprs:
+        c = [self.new_net.all_oprs_dict[X_name],  self.new_net.all_oprs_dict['prob_softmax']]
+        fprop2 = env.make_func_from_loss_var(self.new_net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
+        fprop2.compile(c)
+
+        c2 = [self.net.all_oprs_dict[Y_name], self.net.all_oprs_dict['prob_softmax']]
+        fprop1 = env.make_func_from_loss_var(self.new_net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
+        fprop1.compile(c2)
+
+        #fprop1 = self.fprop1
+        t = Timer()
+        t.tic()
         k2 = self.get_layer_id(X_name)
         k1 = self.get_layer_id(Y_name)
 
         sample_d, sample_l = self.get_data_batch()
+        t.toc("sample data")
         print(sample_l)
         sample_X_out = fprop2(data=sample_d, label = sample_l)[k2]
+        t.toc("fprop2")
         sample_Y_out = fprop1(data=sample_d, label = sample_l)[k1]
+        t.toc("fprop1")
         X_channels = sample_X_out.shape[1]
         width = sample_X_out.shape[2]
         height = width
@@ -218,12 +226,19 @@ class brain_net():
         Y = np.zeros([NN, Y_channels])
         test_scores = ScoreSet()
         for i in range(N//batch_size):
-            #print("batch_num", i)
+            if i % (N//batch_size/50) == 0:
+                print("batch_num", i)
+            #t = Timer()
+            #t.tic()
             data, label = self.get_data_batch()
-
+            #print("got data")
+            #t.toc("data")
             tmp = fprop2(data = data, label = label)
+            #t.toc("prop")
+            #print("proped")
             X_out = tmp[k2]
-            ans = tmp[len(fprop2.outputs)-2]
+            #print(self.names2id)
+            ans = tmp[self.get_layer_id('prob_softmax')]
             output_gt_pair = [ans, label]
             evaluators = [
                     ('Top-1 err', TopNEvaluator(1)),
@@ -258,16 +273,17 @@ class brain_net():
 
     def val(self):
         print("validating....")
-        c = []
-        env = FpropEnv()
-        for layers in self.new_net.all_oprs:
-            c.append(env.get_mgbvar(layers))
-        fprop2 = env.comp_graph.compile_outonly(c)
+        c = [self.new_net.all_oprs_dict['prob_softmax']]
+        #env = FpropEnv()
+        fprop2 = env.make_func_from_loss_var(self.new_net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
+        fprop2.compile(c)
 #start val
         test_scores = ScoreSet()
-        for i in range(5):
+        for i in range(5000):
+            if (i % 100 == 0):
+                print("validated "+i+' batches')
             val_d, val_l = self.get_data_batch(is_val = True)
-            ans = fprop2(data=val_d, label=val_l)[len(fprop2.outputs)-2]
+            ans = fprop2(data=val_d, label=val_l)[self.get_layer_id('prob_softmax')]
             output_gt_pair = [ans, val_l]
             evaluators = [
                     ('Top-1 err', TopNEvaluator(1)),
@@ -288,10 +304,17 @@ class brain_net():
         print("Pruning model....")
         self.R3()
 
+def make_parser():
+    parser = argparse.ArgumentParser()
+    return parser
+
 
 def main():
-    net = brain_net('vgg16.brainmodel')
-    net.prune()
+    worker_name = 'brain.test'
+    parser = make_parser()
+    with OneShotEnv(worker_name, custom_parser=parser) as env:
+        net = brain_net('vgg16.brainmodel', env)
+        net.prune()
 
 
 main()
