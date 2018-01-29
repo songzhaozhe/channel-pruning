@@ -1,7 +1,7 @@
-[provider_cfg]
-nori_source = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/imagenet.train.nori.list
-nori_server = /unsullied/sharefs/zhangxiangyu/exp/Dataset/ImageNet2012/servers_train.txt
-batch_size = 64
+[provider_cfg_train]
+nori_source = /unsullied/sharefs/luojing/exp/Dataset/ImageNet2012/imagenet.train.nori.list
+nori_server = /unsullied/sharefs/luojing/exp/Dataset/ImageNet2012/servers_train.txt
+batch_size = 8
 cache_data = 0
 random_shuffle = 1
 accessor_type = replacement

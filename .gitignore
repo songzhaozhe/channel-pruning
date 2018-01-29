@@ -2,6 +2,7 @@
 *.pyc
 *.brainmodel
 *.pickle
+*.save
 *.caffemodel
 *.solverstate
 *.prototxt

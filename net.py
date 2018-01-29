@@ -3,12 +3,13 @@ from ntools.megtools.classification.utils import ScoreSet
 from meghair.train.env import TrainingEnv, Action
 import argparse
 from meghair.utils.io import load_network
+from meghair.utils import io
 import numpy as np
 
 from megskull.graph import FpropEnv
-from .utils import underline, OK, FAIL, space, CHECK_EQ, shell, redprint, Timer
+from lib.utils import underline, OK, FAIL, space, CHECK_EQ, shell, redprint, Timer
 from sklearn.linear_model import Lasso,LinearRegression, MultiTaskLasso
-from .decompose import relu, dictionary, rel_error
+from lib.decompose import relu, dictionary, rel_error
 from ntools.data.datapro import DataproProvider
 
 
@@ -16,46 +17,62 @@ from ntools.data.datapro import DataproProvider
 class brain_net():
     def __init__(self, model_file):
         self.net = load_network(model_file)
-        self.N = 128
-        self.batch_size = 64
+        self.N = 16
+        self.batch_size = 8
+        self.nperimage = 10
         self.new_net = load_network(model_file)
         print("finished loading weights")
         self.oprs_dict = self.net.loss_visitor.all_oprs_dict
         self.new_oprs_dict = self.new_net.loss_visitor.all_oprs_dict
         #print(self.oprs_dict)
-        self.convs = self.get_convs_from_net()
-        print(self.convs)
         c = []
         env = FpropEnv()
-        for layers in self.net:
+        for layers in self.net.all_oprs:
             c.append(env.get_mgbvar(layers))
         self.fprop1 = env.comp_graph.compile_outonly(c)
 
-	data_func = self.get_data()
-	self.data_iter = data_func()
+        self.convs = self.get_convs_from_net()
+        print(self.convs)
+        data_func = self.get_data(is_val=False)
+        data_func_val = self.get_data(is_val=True)
+        self.data_iter = data_func()
+        self.data_iter_val = data_func_val()
 
-    def get_data():
-	return DataproProviderMaker(
-	    config_file = 'provider_config_val.txt',
-	    provider_name = 'provider_cfg_val',
-	    entry_names = ['image_val', 'label'],
-	    output_names = ['data', 'label']
-	    )
+    def get_data(self, is_val = False):
+        if is_val:
+            return DataproProviderMaker(
+                config_file = 'provider_config_val.txt',
+                provider_name = 'provider_cfg_val',
+                entry_names = ['image_val', 'label'],
+                output_names = ['data', 'label']
+                )
+        else:
+            return DataproProviderMaker(
+                config_file = 'provider_config_train.txt',
+                provider_name = 'provider_cfg_train',
+                entry_names = ['image', 'label'],
+                output_names = ['data', 'label']
+                )
 
-    def get_data_batch():
-        data = next(self.data_iter)
-        d = data[data_iter.output_names[0]]
-        gt = data[data_iter.output_names[-1]]
+    def get_data_batch(self, is_val = False):
+        #print("getting")
+        if is_val == False:
+            data = next(self.data_iter)
+        else:
+            data = next(self.data_iter_val)
+        d = data[self.data_iter.output_names[0]]
+        gt = data[self.data_iter.output_names[-1]]
         d[:,0,:,:]-=103.939
         d[:,1,:,:]-=116.779
         d[:,2,:,:]-=123.68
+        #print("got")
         return d, gt
 
 
     def get_convs_from_net(self):
         convs = []
         for i in self.oprs_dict:
-            if i.startswith('conv'):
+            if i.startswith('conv') and (i.endswith(':W') or i.endswith(':b')):
                 cand = i[:-2]
                 if cand not in convs:
                     convs.append(cand)
@@ -67,7 +84,9 @@ class brain_net():
     def param_b_data(self, conv):
         return self.oprs_dict[conv+':b'].get_value()
     def param_shape(self, conv):
-        return self.oprs_dict[conv+':W'].get_value.shape
+        #print(self.oprs_dict)
+        #print(self.oprs_dict['conv1_1'].get_value())
+        return self.oprs_dict[conv+':W'].get_value().shape
     def get_layer_id(self, conv):
         i = 0
         while (self.fprop1.outputs[i].name != conv):
@@ -82,24 +101,22 @@ class brain_net():
         """
 
         X, Y = self.extract_XY(X_name, Y_name) # extract_XY(conv, convnext)
-        newX = np.rollaxis(X.reshape((-1, h, w, X.shape[1])), 3, 1).copy()
 
         W2 = self.param_data(Y_name)
-        if DEBUG: print("net.dictionary_kernel: dcfgs.ls is not gd or there is no MemoryData -by Mario")
         Y = Y - self.param_b_data(Y_name) # compute the difference between what the extracted feature and the biases of the next layer ??? -by Mario
-        if DEBUG: print("gtY is only defined in this if-condition, but it is required bellow --> this condition is always be true?")
 
-        newX = relu(newX)
+        newX = relu(X)
 
-        print("rMSE", rel_error(newX.reshape((newX.shape[0],-1)).dot(W2.reshape((W2.shape[0],-1)).T), gtY))
+        print("rMSE", rel_error(newX.reshape((newX.shape[0],-1)).dot(W2.reshape((W2.shape[0],-1)).T), Y))
         # performe the lasso regression -by Mario
         outputs = dictionary(newX, W2, Y, rank=d_prime, B2=self.param_b_data(Y_name))
+        print("out of dic")
         return outputs
 
     def R3(self): # TODO: Delete VH and ITQ from R3 to eliminate spatial and channel factorization (tried but failed ㅜㅜ) -by Mario
         print("entered R3!!!!")
-        oprs_dict = ori_net.loss_visitor.all_oprs_dict
-        self.usexyz()
+        oprs_dict = self.oprs_dict
+        new_oprs_dict = self.new_oprs_dict
         speed_ratio = 3.
         prefix = str(int(speed_ratio)+1)+'x'
         DEBUG = True
@@ -123,17 +140,17 @@ class brain_net():
 
         for i in rankdic:
             if 'conv5' in i:
-                continue # the break-statemet was giving a bug, so changed it to continue-statement -by Mario
+                continue
             rankdic[i] = int(rankdic[i] * 4. / speed_ratio)
         c_ratio = 1.15
 
         t = Timer()
 
         for conv, convnext in zip(convs[1:], convs[2:]+['pool5']): # note that we exclude the first conv, conv1_1 contributes little computation -by Mario
+
             W_shape = self.param_shape(conv)
             d_c = int(W_shape[0] / c_ratio)
             rank = rankdic[conv]
-            d_prime = rank
             if d_c < rank: d_c = rank
             print("channel pruning")
             '''channel pruning'''
@@ -142,11 +159,10 @@ class brain_net():
                 #if conv.startswith('conv4'): #what is this -by Mario
                 #    c_ratio = 1.5
                 if conv in pooldic:
-                    X_name = pool_dict[X_name]
+                    X_name = pooldic[conv]
                 else:
                     X_name = conv
-                #idxs, array of booleans that indicates which feature maps(?) are elimated
-                # newX: N c h w (BatchSize, channels, h, w), W2: n c h w (out_channels, in_channels, fitler_h, filter_w)
+                print(X_name, convnext)
                 idxs, W2, B2 = self.dictionary_kernel(X_name, d_c, convnext)
                 # W2
                 W_new = self.param_data(convnext)
@@ -160,8 +176,8 @@ class brain_net():
 
                 t.toc('channel_pruning')
             print("channel pruning finished")
-        new_pt = self.save_pt(prefix=prefix)
-        return new_pt
+            self.val()
+        io.dump(self.new_net, 'pruned_model.save')
 
     def extract_XY(self, X_name, Y_name, DEBUG = False):
         """
@@ -170,26 +186,112 @@ class brain_net():
 
         Return:
             X feats of size: N C h w
+            Y feats of size: N c1 1 1
         """
+        print("extracting XY")
         batch_size = self.batch_size
         N = self.N
+        n = self.nperimage
 
         c = []
         env = FpropEnv()
-        for layers in self.new_net:
+        for layers in self.new_net.all_oprs:
             c.append(env.get_mgbvar(layers))
         fprop2 = env.comp_graph.compile_outonly(c)
+        fprop1 = self.fprop1
 
         k2 = self.get_layer_id(X_name)
         k1 = self.get_layer_id(Y_name)
 
+        sample_d, sample_l = self.get_data_batch()
+        print(sample_l)
+        sample_X_out = fprop2(data=sample_d, label = sample_l)[k2]
+        sample_Y_out = fprop1(data=sample_d, label = sample_l)[k1]
+        X_channels = sample_X_out.shape[1]
+        width = sample_X_out.shape[2]
+        height = width
+        Y_channels = sample_Y_out.shape[1]
+
+        #self.val(fprop2)
+        NN = N * n
+        X = np.zeros([NN, X_channels, 3, 3])
+        Y = np.zeros([NN, Y_channels])
+        test_scores = ScoreSet()
         for i in range(N//batch_size):
-            data, label = self.get_data_batch
-            fprop2_out = fprop2(data = data, label = label)[k2]
+            #print("batch_num", i)
+            data, label = self.get_data_batch()
 
+            tmp = fprop2(data = data, label = label)
+            X_out = tmp[k2]
+            ans = tmp[len(fprop2.outputs)-2]
+            output_gt_pair = [ans, label]
+            evaluators = [
+                    ('Top-1 err', TopNEvaluator(1)),
+                    ('Top-5 err', TopNEvaluator(5))]
+            scores = [(item[0], item[1](output_gt_pair)) for item in evaluators]
+            # save results
+            test_scores.append(scores)
+            Y_out = fprop1(data = data, label = label)[k1]
+            X_complete = np.zeros([X_out.shape[0], X_out.shape[1], X_out.shape[2]+2, X_out.shape[3]+2])
+            X_complete[:,:,1:-1,1:-1] = X_out
+            pos_x = np.random.randint(X_out.shape[2], size=(batch_size,n)) + 1
+            pos_y = np.random.randint(X_out.shape[3], size=(batch_size,n)) + 1
 
+            for j in range(batch_size):
+                for k in range(n):
+                    index = (i * batch_size + j)*10 + k
+                    X[index,:,:,:] = X_complete[j,:,pos_x[j][k]-1:pos_x[j][k]+2,pos_y[j][k]-1:pos_y[j][k]+2]
+                    Y[index,:] = Y_out[j,:,pos_x[j][k]-1,pos_y[j][k]-1]
 
+        cores_str = "TOTAL Score: {}".format(test_scores.format())
+
+        result = test_scores.get_result()
+        return_scores = {'Top-1 err':None, 'Top-5 err': None}
+        for key, val in result:
+            if key in return_scores:
+                return_scores[key] = val
+        print(return_scores)
+
+        Y.reshape([Y.shape[0],Y.shape[1],1,1])
 
         return X, Y
+
+    def val(self):
+        print("validating....")
+        c = []
+        env = FpropEnv()
+        for layers in self.new_net.all_oprs:
+            c.append(env.get_mgbvar(layers))
+        fprop2 = env.comp_graph.compile_outonly(c)
+#start val
+        test_scores = ScoreSet()
+        for i in range(5):
+            val_d, val_l = self.get_data_batch(is_val = True)
+            ans = fprop2(data=val_d, label=val_l)[len(fprop2.outputs)-2]
+            output_gt_pair = [ans, val_l]
+            evaluators = [
+                    ('Top-1 err', TopNEvaluator(1)),
+                    ('Top-5 err', TopNEvaluator(5))]
+            scores = [(item[0], item[1](output_gt_pair)) for item in evaluators]
+            # save results
+            test_scores.append(scores)
+        cores_str = "TOTAL Score: {}".format(test_scores.format())
+
+        result = test_scores.get_result()
+        return_scores = {'Top-1 err':None, 'Top-5 err': None}
+        for key, val in result:
+            if key in return_scores:
+                return_scores[key] = val
+        print(return_scores)
+#end val
     def prune(self):
         print("Pruning model....")
+        self.R3()
+
+
+def main():
+    net = brain_net('vgg16.brainmodel')
+    net.prune()
+
+
+main()
