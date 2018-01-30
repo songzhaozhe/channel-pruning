@@ -27,18 +27,6 @@ class brain_net():
         print("finished loading weights")
         self.oprs_dict = self.net.loss_visitor.all_oprs_dict
         self.new_oprs_dict = self.new_net.loss_visitor.all_oprs_dict
-        #print(self.oprs_dict)
-        #c = []
-        #env = FpropEnv()
-        self.names2id = {}
-        #i = 0
-        #for layers in self.net.all_oprs:
-        #    c.append(layers)
-        #    self.names2id[layers.name] = i
-        #    i = i+1
-
-        #self.fprop1 = env.make_func_from_loss_var(self.net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
-        #self.fprop1.compile(c)
 
         self.convs = self.get_convs_from_net()
         print(self.convs)
@@ -75,9 +63,7 @@ class brain_net():
         d[:,0,:,:]-=103.939
         d[:,1,:,:]-=116.779
         d[:,2,:,:]-=123.68
-        #print("got")
         return d, gt
-
 
     def get_convs_from_net(self):
         convs = []
@@ -90,12 +76,9 @@ class brain_net():
 
     def param_data(self, conv):
         return self.oprs_dict[conv+':W'].get_value()
-
     def param_b_data(self, conv):
         return self.oprs_dict[conv+':b'].get_value()
     def param_shape(self, conv):
-        #print(self.oprs_dict)
-        #print(self.oprs_dict['conv1_1'].get_value())
         return self.oprs_dict[conv+':W'].get_value().shape
 
     def dictionary_kernel(self, X_name, d_prime, Y_name, DEBUG = 0):
@@ -106,25 +89,24 @@ class brain_net():
         """
 
         X, Y = self.extract_XY(X_name, Y_name) # extract_XY(conv, convnext)
-
         W2 = self.param_data(Y_name)
         Y = Y - self.param_b_data(Y_name) # compute the difference between what the extracted feature and the biases of the next layer ??? -by Mario
-
         newX = relu(X)
 
         print("rMSE", rel_error(newX.reshape((newX.shape[0],-1)).dot(W2.reshape((W2.shape[0],-1)).T), Y))
-        # performe the lasso regression -by Mario
+        # perform the lasso regression -by Mario
         outputs = dictionary(newX, W2, Y, rank=d_prime, B2=self.param_b_data(Y_name))
         print("out of dic")
         return outputs
 
-    def R3(self): # TODO: Delete VH and ITQ from R3 to eliminate spatial and channel factorization (tried but failed ㅜㅜ) -by Mario
+    def R3(self):
         print("entered R3!!!!")
         oprs_dict = self.oprs_dict
         new_oprs_dict = self.new_oprs_dict
         DEBUG = True
         convs= self.convs
-        end = 5 # TODO: Consider passing a flag to create this dictionaries for other models (passign arguments to the paserser maybe?) -by Mario
+        end = 5
+        speed_ratio = 4
         alldic = ['conv%d_1' % i for i in range(1,end)] + ['conv%d_2' % i for i in range(3, end)]
         pooldic = {'conv1_2':'pool1', 'conv2_2':'pool2'}#, 'conv3_3']
         rankdic = {'conv1_1': 17,
@@ -140,12 +122,18 @@ class brain_net():
                    'conv5_1': 398,
                    'conv5_2': 390,
                    'conv5_3': 379}
-
+        for i in rankdic:
+            if 'conv5' in i:
+                continue # the break-statemet was giving a bug, so changed it to continue-statement -by Mario
+            rankdic[i] = int(rankdic[i] * 4. / speed_ratio)
+        c_ratio = 1.15
         t = Timer()
-
         for conv, convnext in zip(convs[1:], convs[2:]+['pool5']): # note that we exclude the first conv, conv1_1 contributes little computation -by Mario
             W_shape = self.param_shape(conv)
-            d_c = rankdic[conv]
+            d_c = int(W_shape[0] / c_ratio)
+            rank = rankdic[conv]
+            d_prime = rank
+            if d_c < rank: d_c = rank
             print("channel pruning")
             '''channel pruning'''
             if (conv in alldic or conv in pooldic) and (convnext in self.convs):
@@ -162,9 +150,6 @@ class brain_net():
                 W_new[:, idxs, ...] = W2.copy()
                 self.new_oprs_dict[convnext+':W'].set_value(W_new)
                 self.new_oprs_dict[convnext+':b'].set_value(B2)
-
-                # W1 #TODO: For channel pruning only, we should handle the origial conv layers (not the _H or _P layers)
-                     # This section of code must be addapted
 
                 t.toc('channel_pruning')
             print("channel pruning finished")
@@ -185,10 +170,6 @@ class brain_net():
         batch_size = self.batch_size
         N = self.N
         n = self.nperimage
-
-
-        #env = FpropEnv()
-        #for layers in self.new_net.all_oprs:
         c = [self.new_net.loss_visitor.all_oprs_dict[X_name],  self.new_net.loss_visitor.all_oprs_dict['prob_softmax']]
         fprop2 = env.make_func_from_loss_var(self.new_net.loss_visitor.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
         fprop2.compile(c)
@@ -197,10 +178,8 @@ class brain_net():
         fprop1 = env.make_func_from_loss_var(self.new_net.loss_visitor.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
         fprop1.compile(c2)
 
-        #fprop1 = self.fprop1
         t = Timer()
         t.tic()
-
         sample_d, sample_l = self.get_data_batch()
         t.toc("sample data")
         print(sample_l)
@@ -213,7 +192,6 @@ class brain_net():
         height = width
         Y_channels = sample_Y_out.shape[1]
 
-        #self.val(fprop2)
         NN = N * n
         X = np.zeros([NN, X_channels, 3, 3])
         Y = np.zeros([NN, Y_channels])
@@ -224,13 +202,10 @@ class brain_net():
             #t = Timer()
             #t.tic()
             data, label = self.get_data_batch()
-            #print("got data")
             #t.toc("data")
             tmp = fprop2(data = data, label = label)
             #t.toc("prop")
-            #print("proped")
             X_out = tmp[0]
-            #print(self.names2id)
             ans = tmp[1]
             output_gt_pair = [ans, label]
             evaluators = [
@@ -271,7 +246,6 @@ class brain_net():
         env = self.env
         fprop2 = env.make_func_from_loss_var(self.new_net.loss_visitor.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
         fprop2.compile(c)
-#start val
         test_scores = ScoreSet()
         for i in range(500):
             if (i % 50 == 0):
@@ -293,7 +267,7 @@ class brain_net():
             if key in return_scores:
                 return_scores[key] = val
         print(return_scores)
-#end val
+
     def prune(self):
         print("Pruning model....")
         self.R3()
