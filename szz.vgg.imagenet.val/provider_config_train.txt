@@ -1,21 +1,22 @@
-
-[provider_cfg_val]
+[provider_cfg]
 nori_source = /unsullied/sharefs/luojing/exp/Dataset/ImageNet2012/imagenet.val.nori.list
 nori_server = /unsullied/sharefs/luojing/exp/Dataset/ImageNet2012/servers_val.txt
-batch_size = 100 
+batch_size = 64
 cache_data = 0
-random_shuffle = 0 
+random_shuffle = 1
+accessor_type = replacement
 
-entries = image_val, label
 
-[image_val]
+entries = image, label
+
+[image]
 type = image
 
 batch_img_size = 224
-crop_type = 3
+crop_type = 3 
 crop_ratio = 0.875
 channel_num = 3
-interpolation=Bicubic
+interpolation = Bicubic
 
 
 [label]

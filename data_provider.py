@@ -29,23 +29,17 @@ PAD_CROP = 4
 
 logger = logconf.get_logger(__name__)
 
-
-x = np.load('x.npy')
-y = np.load('y.npy')
-test_x = np.load('test_x.npy')
-test_y = np.load('test_y.npy')
-
-def unpickle(file):
-    import cPickle
-    with open(file, 'rb') as fo:
-        dict = cPickle.load(fo)
-    return dict
-
 def datafeed_addr(dataset_name):
     return getpass.getuser() + '.cifar.' + dataset_name
 
+def get_data(self):
+    return DataproProviderMaker(
+        config_file = 'provider_config_val.txt',
+        provider_name = 'provider_cfg_val',
+        entry_names = ['image_val', 'label'],
+        output_names = ['data', 'label']
+        )
 class Augmentor():
-
     @classmethod
     def distort(cls, img):
         # pad and crop settings
@@ -119,19 +113,7 @@ def train_dataset(verbose=False, batchSize=256):
             Y[i] = label
         yield {'img': X, 'label': Y}
 
-def val_dataset(verbose=False, batchSize=1):
-    fetcher = DataFetcher(False)
-    while True:
-        X = np.ndarray((batchSize, 3, IMAGE_SIZE, IMAGE_SIZE), dtype='float32')
-        Y = np.zeros((batchSize), dtype='float32')
-        for i in range(batchSize):
-            img, label = fetcher.load(False)
-            X[i] = img
-            Y[i] = label
-        yield {'img': X, 'label': Y}
-
 def worker():
-
     #add_rand_seed_entropy(worker_id)
     np.random.seed(int(time.time()*100000%1000000))
 
@@ -154,25 +136,6 @@ def worker():
             sys.stdout.flush()
 
 def main():
-
-    global x
-    global y
-    global test_x
-    global test_y
-    print('... preprocessing data')
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        '-j', '--jobs', default=10,
-        help='number of concurrent subprocesses for training',
-    )
-    parser.add_argument(
-        '-v', '--verbose', action="store_true",
-        help="print DEBUG info",
-    )
-    args = parser.parse_args()
-    print('start worker')
     worker()
 
 if __name__ == '__main__':

@@ -20,8 +20,8 @@ class brain_net():
     def __init__(self, model_file, env):
         self.env = env
         self.net = load_network(model_file)
-        self.N = 64
-        self.batch_size = 32
+        self.N = 5000
+        self.batch_size = 64
         self.nperimage = 10
         self.new_net = load_network(model_file)
         print("finished loading weights")
@@ -57,10 +57,10 @@ class brain_net():
                 )
         else:
             return DpflowProviderMaker(
-                conn                = 'szz.vgg.imagenet',
+                conn                = 'szz.vgg.imagenet.val',
                 entry_names         = ['image', 'label'],
                 output_names        = ['data', 'label'],
-                descriptor          = { 'data': { 'shape': [32, 3, 224, 224] }, 'label': { 'shape': [32] } },
+                descriptor          = { 'data': { 'shape': [64, 3, 224, 224] }, 'label': { 'shape': [64] } },
                 buffer_size         = 16
                 )
 
@@ -97,11 +97,6 @@ class brain_net():
         #print(self.oprs_dict)
         #print(self.oprs_dict['conv1_1'].get_value())
         return self.oprs_dict[conv+':W'].get_value().shape
-    def get_layer_id(self, conv):
-        ret = self.names2id[conv]
-        #print(self.names2id)
-        #print(conv+" id is ",ret)
-        return ret
 
     def dictionary_kernel(self, X_name, d_prime, Y_name, DEBUG = 0):
         """ channel pruning algorithm wrapper
@@ -194,26 +189,24 @@ class brain_net():
 
         #env = FpropEnv()
         #for layers in self.new_net.all_oprs:
-        c = [self.new_net.all_oprs_dict[X_name],  self.new_net.all_oprs_dict['prob_softmax']]
-        fprop2 = env.make_func_from_loss_var(self.new_net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
+        c = [self.new_net.loss_visitor.all_oprs_dict[X_name],  self.new_net.loss_visitor.all_oprs_dict['prob_softmax']]
+        fprop2 = env.make_func_from_loss_var(self.new_net.loss_visitor.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
         fprop2.compile(c)
 
-        c2 = [self.net.all_oprs_dict[Y_name], self.net.all_oprs_dict['prob_softmax']]
-        fprop1 = env.make_func_from_loss_var(self.new_net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
+        c2 = [self.net.loss_visitor.all_oprs_dict[Y_name], self.net.loss_visitor.all_oprs_dict['prob_softmax']]
+        fprop1 = env.make_func_from_loss_var(self.new_net.loss_visitor.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
         fprop1.compile(c2)
 
         #fprop1 = self.fprop1
         t = Timer()
         t.tic()
-        k2 = self.get_layer_id(X_name)
-        k1 = self.get_layer_id(Y_name)
 
         sample_d, sample_l = self.get_data_batch()
         t.toc("sample data")
         print(sample_l)
-        sample_X_out = fprop2(data=sample_d, label = sample_l)[k2]
+        sample_X_out = fprop2(data=sample_d, label = sample_l)[0]
         t.toc("fprop2")
-        sample_Y_out = fprop1(data=sample_d, label = sample_l)[k1]
+        sample_Y_out = fprop1(data=sample_d, label = sample_l)[0]
         t.toc("fprop1")
         X_channels = sample_X_out.shape[1]
         width = sample_X_out.shape[2]
@@ -226,7 +219,7 @@ class brain_net():
         Y = np.zeros([NN, Y_channels])
         test_scores = ScoreSet()
         for i in range(N//batch_size):
-            if i % (N//batch_size/50) == 0:
+            if i % (N//batch_size/10) == 0:
                 print("batch_num", i)
             #t = Timer()
             #t.tic()
@@ -236,9 +229,9 @@ class brain_net():
             tmp = fprop2(data = data, label = label)
             #t.toc("prop")
             #print("proped")
-            X_out = tmp[k2]
+            X_out = tmp[0]
             #print(self.names2id)
-            ans = tmp[self.get_layer_id('prob_softmax')]
+            ans = tmp[1]
             output_gt_pair = [ans, label]
             evaluators = [
                     ('Top-1 err', TopNEvaluator(1)),
@@ -246,7 +239,7 @@ class brain_net():
             scores = [(item[0], item[1](output_gt_pair)) for item in evaluators]
             # save results
             test_scores.append(scores)
-            Y_out = fprop1(data = data, label = label)[k1]
+            Y_out = fprop1(data = data, label = label)[0]
             X_complete = np.zeros([X_out.shape[0], X_out.shape[1], X_out.shape[2]+2, X_out.shape[3]+2])
             X_complete[:,:,1:-1,1:-1] = X_out
             pos_x = np.random.randint(X_out.shape[2], size=(batch_size,n)) + 1
@@ -273,17 +266,18 @@ class brain_net():
 
     def val(self):
         print("validating....")
-        c = [self.new_net.all_oprs_dict['prob_softmax']]
+        c = [self.new_net.loss_visitor.all_oprs_dict['prob_softmax']]
         #env = FpropEnv()
-        fprop2 = env.make_func_from_loss_var(self.new_net.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
+        env = self.env
+        fprop2 = env.make_func_from_loss_var(self.new_net.loss_visitor.all_oprs[0], "val", train_state=False, enforce_var_shape=False)
         fprop2.compile(c)
 #start val
         test_scores = ScoreSet()
-        for i in range(5000):
-            if (i % 100 == 0):
-                print("validated "+i+' batches')
+        for i in range(500):
+            if (i % 50 == 0):
+                print("validated  batches", i)
             val_d, val_l = self.get_data_batch(is_val = True)
-            ans = fprop2(data=val_d, label=val_l)[self.get_layer_id('prob_softmax')]
+            ans = fprop2(data=val_d, label=val_l)[0]
             output_gt_pair = [ans, val_l]
             evaluators = [
                     ('Top-1 err', TopNEvaluator(1)),
@@ -314,6 +308,7 @@ def main():
     parser = make_parser()
     with OneShotEnv(worker_name, custom_parser=parser) as env:
         net = brain_net('vgg16.brainmodel', env)
+        #net.val()
         net.prune()
 
 
