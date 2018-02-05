@@ -20,9 +20,9 @@ class brain_net():
     def __init__(self, model_file, env):
         self.env = env
         self.net = load_network(model_file)
-        self.N = 5000
+        self.N = 16000
         self.batch_size = 64
-        self.nperimage = 10
+        self.nperimage = 20
         self.new_net = load_network(model_file)
         print("finished loading weights")
         self.oprs_dict = self.net.loss_visitor.all_oprs_dict
@@ -108,33 +108,35 @@ class brain_net():
         end = 5
         speed_ratio = 4
         alldic = ['conv%d_1' % i for i in range(1,end)] + ['conv%d_2' % i for i in range(3, end)]
-        pooldic = {'conv1_2':'pool1', 'conv2_2':'pool2'}#, 'conv3_3']
-        rankdic = {'conv1_1': 17,
-                   'conv1_2': 17,
-                   'conv2_1': 37,
-                   'conv2_2': 47,
-                   'conv3_1': 83,
+        pooldic = {'conv1_2':'pool1', 'conv2_2':'pool2', 'conv3_3':'pool3', 'conv4_3':'pool4'}
+
+        rankdic = {'conv1_1': 24,
+                   'conv1_2': 22,
+                   'conv2_1': 41,
+                   'conv2_2': 51,
+                   'conv3_1': 108,
                    'conv3_2': 89,
-                   'conv3_3': 106,
-                   'conv4_1': 175,
-                   'conv4_2': 192,
-                   'conv4_3': 227,
-                   'conv5_1': 398,
-                   'conv5_2': 390,
-                   'conv5_3': 379}
+                   'conv3_3': 111,
+                   'conv4_1': 184,
+                   'conv4_2': 276,
+                   'conv4_3': 228,
+                   'conv5_1': 512,
+                   'conv5_2': 512,
+                   'conv5_3': 512}
         for i in rankdic:
             if 'conv5' in i:
                 continue # the break-statemet was giving a bug, so changed it to continue-statement -by Mario
             rankdic[i] = int(rankdic[i] * 4. / speed_ratio)
         c_ratio = 1.15
         t = Timer()
-        for conv, convnext in zip(convs[1:], convs[2:]+['pool5']): # note that we exclude the first conv, conv1_1 contributes little computation -by Mario
-            W_shape = self.param_shape(conv)
-            d_c = int(W_shape[0] / c_ratio)
-            rank = rankdic[conv]
-            d_prime = rank
-            if d_c < rank: d_c = rank
-            print("channel pruning")
+        for conv, convnext in zip(convs[0:], convs[1:]+['pool5']): # note that we exclude the first conv, conv1_1 contributes little computation -by Mario
+            #W_shape = self.param_shape(conv)
+            #d_c = int(W_shape[0] / c_ratio)
+            #rank = rankdic[conv]
+            #d_prime = rank
+            #if d_c < rank: d_c = rank
+            d_c = rankdic[conv]
+            print("channel pruning", conv, convnext)
             '''channel pruning'''
             if (conv in alldic or conv in pooldic) and (convnext in self.convs):
                 t.tic()
@@ -153,6 +155,8 @@ class brain_net():
 
                 t.toc('channel_pruning')
             print("channel pruning finished")
+
+            io.dump(self.new_net, 'outputs/'+X_name+'pruned_model.save')
         self.val()
         io.dump(self.new_net, 'pruned_model.save')
 
@@ -182,7 +186,7 @@ class brain_net():
         t.tic()
         sample_d, sample_l = self.get_data_batch()
         t.toc("sample data")
-        print(sample_l)
+        #print(sample_l)
         sample_X_out = fprop2(data=sample_d, label = sample_l)[0]
         t.toc("fprop2")
         sample_Y_out = fprop1(data=sample_d, label = sample_l)[0]
@@ -197,7 +201,7 @@ class brain_net():
         Y = np.zeros([NN, Y_channels])
         test_scores = ScoreSet()
         for i in range(N//batch_size):
-            if i % (N//batch_size/10) == 0:
+            if i % (N//batch_size/4) == 0:
                 print("batch_num", i)
             #t = Timer()
             #t.tic()
@@ -222,7 +226,7 @@ class brain_net():
 
             for j in range(batch_size):
                 for k in range(n):
-                    index = (i * batch_size + j)*10 + k
+                    index = (i * batch_size + j)*n + k
                     X[index,:,:,:] = X_complete[j,:,pos_x[j][k]-1:pos_x[j][k]+2,pos_y[j][k]-1:pos_y[j][k]+2]
                     Y[index,:] = Y_out[j,:,pos_x[j][k]-1,pos_y[j][k]-1]
 

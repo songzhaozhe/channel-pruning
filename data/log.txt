@@ -1,0 +1,6 @@
+[05 21:34:09 330@env.py:meghair.train.env] WRN --fast-run not enabled; execution may be slow
+[05 21:34:09 67@popen_fork.py:megbrain] WRN It is dangerous to call fork() after cuda context has been initialized; please ensure no cuda methods is invoked in the child process. You can set MGB_THROW_ON_FORK to find out where the fork() is called.
+[05 21:34:12 0@(unknown file):megbrain] create CompNode gpu0:0 from logical xpux:0
+[05 21:34:12 344@env.py:meghair.train.env] WRN A exception occurred during WorkingEnv initialization, give up running process
+[05 21:34:12 0@(unknown file):megbrain] cuda: gpu0: name=`GeForce GTX 1080 Ti' dyn_mem_reserve=0.00MiB alignment=0x200
+[05 21:34:13 0@(unknown file):megbrain] WRN cuda comp node method called after global finalize
