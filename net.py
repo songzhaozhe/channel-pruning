@@ -5,12 +5,11 @@ import argparse
 from meghair.utils.io import load_network
 from meghair.utils import io
 import numpy as np
-from meghair.train.env import  OneShotEnv
 
 from megskull.graph import FpropEnv
-from lib.utils import underline, OK, FAIL, space, CHECK_EQ, shell, redprint, Timer
+from .utils import underline, OK, FAIL, space, CHECK_EQ, shell, redprint, Timer
 from sklearn.linear_model import Lasso,LinearRegression, MultiTaskLasso
-from lib.decompose import relu, dictionary, rel_error
+from .decompose import relu, dictionary, rel_error
 from ntools.data.datapro import DataproProvider
 from ntools.megtools.classification.config import DpflowProviderMaker
 
@@ -276,9 +275,7 @@ class brain_net():
         print("Pruning model....")
         self.R3()
 
-def make_parser():
-    parser = argparse.ArgumentParser()
-    return parser
+
 
 
 def main():
