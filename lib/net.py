@@ -278,13 +278,3 @@ class brain_net():
 
 
 
-def main():
-    worker_name = 'brain.test'
-    parser = make_parser()
-    with OneShotEnv(worker_name, custom_parser=parser) as env:
-        net = brain_net('vgg16.brainmodel', env)
-        #net.val()
-        net.prune()
-
-
-main()
