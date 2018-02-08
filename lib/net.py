@@ -202,12 +202,8 @@ class brain_net():
         for i in range(N//batch_size):
             if i % (N//batch_size/4) == 0:
                 print("batch_num", i)
-            #t = Timer()
-            #t.tic()
             data, label = self.get_data_batch()
-            #t.toc("data")
             tmp = fprop2(data = data, label = label)
-            #t.toc("prop")
             X_out = tmp[0]
             ans = tmp[1]
             output_gt_pair = [ans, label]

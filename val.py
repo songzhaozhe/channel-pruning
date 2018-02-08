@@ -42,7 +42,7 @@ with OneShotEnv(worker_name, custom_parser=parser) as env:
 
     test_scores = ScoreSet()
     N = 50000
-    if args.test:
+    if env.args.test:
         N = 500
     for k in range(N//100):
         batch_num+=1
